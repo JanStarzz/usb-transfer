@@ -1,0 +1,15 @@
+appname         = usb-transfer
+version         = 1.0.0
+display_name    = USB Transfer
+platform        = x86
+maintainer      = USB Transfer
+maintainer_url  = https://github.com/conversun/fnos-apps
+distributor     = conversun
+distributor_url = https://github.com/conversun/fnos-apps
+desktop_uidir   = ui
+desktop_applaunchname = usb-transfer.Application
+service_port    = 8580
+checkport       = false
+desc            = USB存储设备文件传输工具，支持增量同步与进度显示
+source          = thirdparty
+checksum        =

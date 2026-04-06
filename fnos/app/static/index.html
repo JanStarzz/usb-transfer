@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USB Transfer</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #f5f7fa; --card: #fff; --border: #e4e7ed; --primary: #409eff;
+  --success: #67c23a; --warning: #e6a23c; --danger: #f56c6c;
+  --text: #303133; --text2: #606266; --text3: #909399;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+.app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+h1 { font-size: 22px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+
+/* Cards */
+.card { background: var(--card); border-radius: 8px; border: 1px solid var(--border); padding: 16px; margin-bottom: 16px; }
+.card-title { font-size: 15px; font-weight: 600; color: var(--text2); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+.tab { padding: 10px 20px; font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text3); transition: all .2s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+
+/* Auto-import settings */
+.auto-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.auto-label { font-size: 13px; color: var(--text2); min-width: 80px; }
+.auto-value { font-size: 13px; color: var(--text); flex: 1; }
+
+/* Toggle switch */
+.switch { position: relative; display: inline-block; width: 44px; height: 22px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider { position: absolute; inset: 0; background: #dcdfe6; border-radius: 22px; cursor: pointer; transition: .3s; }
+.switch .slider::before { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: .3s; }
+.switch input:checked + .slider { background: var(--success); }
+.switch input:checked + .slider::before { transform: translateX(22px); }
+
+/* Status dot */
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.status-dot.watching { background: var(--success); animation: pulse 2s infinite; }
+.status-dot.off { background: #c0c4cc; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+.dest-display { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f5f7fa; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; flex: 1; min-width: 0; }
+.dest-display .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dest-display .placeholder { color: var(--text3); }
+
+/* Event timeline */
+.timeline { max-height: 200px; overflow-y: auto; }
+.event-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #f5f5f5; }
+.event-row:last-child { border-bottom: none; }
+.event-time { color: var(--text3); white-space: nowrap; flex-shrink: 0; }
+.event-icon { flex-shrink: 0; width: 18px; text-align: center; }
+.event-msg { flex: 1; color: var(--text2); word-break: break-all; }
+.event-msg.error { color: var(--danger); }
+.event-msg.success { color: var(--success); }
+
+/* Dir picker modal */
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; display: flex; align-items: center; justify-content: center; }
+.modal-box { background: #fff; border-radius: 12px; width: 500px; max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+.modal-header { padding: 16px; border-bottom: 1px solid var(--border); font-size: 16px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.modal-body { padding: 16px; flex: 1; overflow-y: auto; }
+.modal-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text3); }
+
+/* Layout */
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 768px) { .panels { grid-template-columns: 1fr; } }
+
+/* USB devices */
+.device-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.device-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #ecf5ff; border: 1px solid #b3d8ff; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all .2s; }
+.device-chip:hover { background: #d9ecff; }
+.device-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.device-chip .size { color: var(--text3); font-size: 11px; }
+.device-chip.active .size { color: rgba(255,255,255,.8); }
+.no-device { color: var(--text3); font-size: 13px; padding: 8px 0; }
+
+/* File browser */
+.browser { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.browser-path { display: flex; align-items: center; gap: 4px; padding: 8px 12px; background: #fafafa; border-bottom: 1px solid var(--border); font-size: 13px; flex-wrap: wrap; }
+.browser-path .seg { color: var(--primary); cursor: pointer; white-space: nowrap; }
+.browser-path .seg:hover { text-decoration: underline; }
+.browser-path .sep { color: var(--text3); }
+.browser-body { max-height: 320px; overflow-y: auto; }
+.file-row { display: flex; align-items: center; padding: 6px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background .15s; }
+.file-row:hover { background: #f5f7fa; }
+.file-row.selected { background: #ecf5ff; }
+.file-row .icon { width: 20px; text-align: center; margin-right: 8px; flex-shrink: 0; }
+.file-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row .meta { color: var(--text3); font-size: 11px; flex-shrink: 0; margin-left: 8px; }
+.empty-dir { padding: 20px; text-align: center; color: var(--text3); font-size: 13px; }
+
+.selected-path { margin-top: 8px; padding: 8px 12px; background: #f0f9eb; border: 1px solid #c2e7b0; border-radius: 6px; font-size: 13px; color: #67c23a; word-break: break-all; }
+.selected-path.dst { background: #fdf6ec; border-color: #f5dab1; color: #e6a23c; }
+
+/* Transfer controls */
+.transfer-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mode-select { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.mode-btn { padding: 8px 16px; font-size: 13px; border: none; background: #fff; cursor: pointer; transition: all .2s; border-right: 1px solid var(--border); }
+.mode-btn:last-child { border-right: none; }
+.mode-btn.active { background: var(--primary); color: #fff; }
+.mode-btn:hover:not(.active) { background: #f5f7fa; }
+
+.btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all .2s; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: #337ecc; }
+.btn-primary:disabled { background: #a0cfff; cursor: not-allowed; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #c45656; }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.btn-refresh { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text2); }
+.btn-refresh:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Progress */
+.progress-wrap { margin-top: 12px; }
+.progress-bar-bg { height: 20px; background: #ebeef5; border-radius: 10px; overflow: hidden; position: relative; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, #409eff, #67c23a); border-radius: 10px; transition: width .3s; min-width: 0; }
+.progress-bar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text); }
+.progress-info { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--text3); }
+.progress-info .current-file { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 12px; }
+
+/* History */
+.history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.history-table th { text-align: left; padding: 8px; border-bottom: 2px solid var(--border); color: var(--text3); font-weight: 500; }
+.history-table td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.badge-ok { background: #f0f9eb; color: var(--success); }
+.badge-fail { background: #fef0f0; color: var(--danger); }
+.mode-tag { display: inline-block; padding: 2px 6px; background: #f4f4f5; border-radius: 4px; font-size: 11px; color: var(--text3); }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #c0c4cc; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="app">
+    <h1>&#128190; USB Transfer</h1>
+
+    <!-- Tab navigation -->
+    <div class="tabs">
+      <div class="tab" :class="{active: tab==='auto'}" @click="tab='auto'">&#9889; DCIM 自动导入</div>
+      <div class="tab" :class="{active: tab==='manual'}" @click="tab='manual'">&#128193; 手动传输</div>
+      <div class="tab" :class="{active: tab==='history'}" @click="tab='history'">&#128203; 历史记录</div>
+    </div>
+
+    <!-- ============ TAB: Auto Import ============ -->
+    <div v-show="tab==='auto'">
+
+      <!-- Auto-import settings -->
+      <div class="card">
+        <div class="card-title">
+          自动导入设置
+          <span style="font-size:12px;font-weight:400;">
+            <span class="status-dot" :class="settings.auto_transfer && settings.dest_path ? 'watching' : 'off'"></span>
+            {{ settings.auto_transfer && settings.dest_path ? '监听中' : '未启用' }}
+          </span>
+        </div>
+
+        <div class="auto-row">
+          <span class="auto-label">自动导入</span>
+          <label class="switch">
+            <input type="checkbox" :checked="settings.auto_transfer" @change="toggleAuto">
+            <span class="slider"></span>
+          </label>
+          <span style="font-size:12px;color:var(--text3);">插入USB后自动复制DCIM目录内容</span>
+        </div>
+
+        <div class="auto-row">
+          <span class="auto-label">监听目录</span>
+          <div style="flex:1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span v-for="(d,i) in settings.source_dirs" :key="i"
+                  style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#ecf5ff;border:1px solid #b3d8ff;border-radius:14px;font-size:12px;">
+              {{ d }}
+              <span style="cursor:pointer;color:var(--text3);font-size:14px;" @click="removeSourceDir(i)">&#10005;</span>
+            </span>
+            <input v-model="newSourceDir" @keydown.enter="addSourceDir" placeholder="输入目录名回车添加"
+                   style="border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:12px;width:160px;">
+          </div>
+        </div>
+        <div style="margin-bottom:12px;font-size:11px;color:var(--text3);padding-left:92px;">
+          USB设备中匹配以上名称的目录会被自动导入（不区分大小写）
+        </div>
+
+        <div class="auto-row">
+          <span class="auto-label">目标目录</span>
+          <div class="dest-display">
+            <span v-if="settings.dest_path" class="path">{{ settings.dest_path }}</span>
+            <span v-else class="placeholder">未设置 - 请先选择照片存储目录</span>
+          </div>
+          <button class="btn btn-primary btn-sm" @click="showDestPicker=true">{{ settings.dest_path ? '修改' : '选择目录' }}</button>
+        </div>
+
+        <div v-if="!settings.dest_path" style="margin-top:8px;padding:10px;background:#fdf6ec;border:1px solid #f5dab1;border-radius:6px;font-size:13px;color:var(--warning);">
+          &#9888; 请先选择目标目录，自动导入才能工作
+        </div>
+      </div>
+
+      <!-- Transfer progress (shared) -->
+      <div v-if="status.active || status.progress > 0" class="card">
+        <div class="card-title">传输进度</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">
+          {{ status.src }} &#10132; {{ status.dst }}
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" :style="{width: status.progress+'%'}"></div>
+            <div class="progress-bar-text">{{ status.progress }}%</div>
+          </div>
+          <div class="progress-info">
+            <span class="current-file" :title="status.current_file">{{ status.current_file || '...' }}</span>
+            <span v-if="status.speed">{{ status.speed }}</span>
+            <span v-if="status.transferred">| {{ status.transferred }}</span>
+            <span>| {{ status.done_files }}/{{ status.total_files }} 文件</span>
+          </div>
+          <div v-if="status.error" style="margin-top:8px;color:var(--danger);font-size:13px;">&#9888; {{ status.error }}</div>
+          <div v-if="!status.active && status.progress >= 100" style="margin-top:8px;color:var(--success);font-size:13px;">&#10004; 传输完成!</div>
+        </div>
+        <div v-if="status.active" style="margin-top:10px;">
+          <button class="btn btn-danger btn-sm" @click="cancelTransfer">&#9724; 取消传输</button>
+        </div>
+      </div>
+
+      <!-- Auto events -->
+      <div class="card">
+        <div class="card-title">
+          检测日志
+          <button class="btn-refresh" @click="loadEvents">&#8635; 刷新</button>
+        </div>
+        <div v-if="events.length" class="timeline">
+          <div v-for="(e,i) in events.slice().reverse()" :key="i" class="event-row">
+            <span class="event-time">{{ e.timestamp.slice(11) }}</span>
+            <span class="event-icon">{{ eventIcon(e.type) }}</span>
+            <span class="event-msg" :class="{error: e.type==='error', success: e.type==='done'}">{{ e.message }}</span>
+          </div>
+        </div>
+        <div v-else style="color:var(--text3);font-size:13px;">暂无事件，插入USB设备后会在此显示</div>
+      </div>
+    </div>
+
+    <!-- ============ TAB: Manual Transfer ============ -->
+    <div v-show="tab==='manual'">
+
+      <!-- USB Devices -->
+      <div class="card">
+        <div class="card-title">
+          USB 设备
+          <button class="btn-refresh" @click="refreshDevices">&#8635; 刷新</button>
+        </div>
+        <div v-if="devices.length" class="device-list">
+          <div v-for="d in devices" :key="d.mountpoint"
+               class="device-chip" :class="{active: selectedDevice===d.mountpoint}"
+               @click="selectDevice(d)">
+            &#128193; {{ d.label || d.name }}
+            <span class="size">{{ d.size }}</span>
+          </div>
+        </div>
+        <div v-else class="no-device">未检测到USB设备，请插入USB存储设备后点击刷新</div>
+      </div>
+
+      <!-- Two-panel browser -->
+      <div class="panels">
+        <!-- Source panel -->
+        <div class="card">
+          <div class="card-title">源目录 (USB)</div>
+          <div class="browser">
+            <div class="browser-path">
+              <span v-for="(seg, i) in srcSegments" :key="i">
+                <span class="seg" @click="navigateSrc(i)">{{ seg || '/' }}</span>
+                <span v-if="i < srcSegments.length-1" class="sep">/</span>
+              </span>
+            </div>
+            <div class="browser-body">
+              <div v-if="srcPath !== '/'" class="file-row" @click="srcGoUp">
+                <span class="icon">&#11014;</span><span class="name">..</span>
+              </div>
+              <div v-for="item in srcItems" :key="item.name"
+                   class="file-row" :class="{selected: srcPath+'/'+item.name === selectedSrc}"
+                   @click="srcClick(item)">
+                <span class="icon">{{ item.is_dir ? '&#128193;' : '&#128196;' }}</span>
+                <span class="name">{{ item.name }}</span>
+                <span class="meta">{{ item.is_dir ? '' : formatSize(item.size) }}</span>
+              </div>
+              <div v-if="!srcItems.length && !srcLoading" class="empty-dir">空目录</div>
+            </div>
+          </div>
+          <div v-if="selectedSrc" class="selected-path">&#10003; 已选: {{ selectedSrc }}</div>
+        </div>
+
+        <!-- Destination panel -->
+        <div class="card">
+          <div class="card-title">
+            目标目录 (NAS)
+            <select v-model="nasQuickPath" @change="quickNavDst" style="font-size:12px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;">
+              <option value="">-- 快速跳转 --</option>
+              <option v-for="s in nasShares" :key="s.path" :value="s.path">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="browser">
+            <div class="browser-path">
+              <span v-for="(seg, i) in dstSegments" :key="i">
+                <span class="seg" @click="navigateDst(i)">{{ seg || '/' }}</span>
+                <span v-if="i < dstSegments.length-1" class="sep">/</span>
+              </span>
+            </div>
+            <div class="browser-body">
+              <div v-if="dstPath !== '/'" class="file-row" @click="dstGoUp">
+                <span class="icon">&#11014;</span><span class="name">..</span>
+              </div>
+              <div v-for="item in dstItems" :key="item.name"
+                   class="file-row" :class="{selected: dstPath+'/'+item.name === selectedDst}"
+                   @click="dstClick(item)">
+                <span class="icon">{{ item.is_dir ? '&#128193;' : '&#128196;' }}</span>
+                <span class="name">{{ item.name }}</span>
+                <span class="meta">{{ item.is_dir ? '' : formatSize(item.size) }}</span>
+              </div>
+              <div v-if="!dstItems.length && !dstLoading" class="empty-dir">空目录</div>
+            </div>
+          </div>
+          <div v-if="selectedDst" class="selected-path dst">&#10003; 目标: {{ selectedDst }}</div>
+          <div v-else-if="dstPath && dstPath !== '/'" class="selected-path dst">&#10003; 目标: {{ dstPath }}</div>
+        </div>
+      </div>
+
+      <!-- Transfer controls -->
+      <div class="card">
+        <div class="card-title">传输控制</div>
+        <div class="transfer-bar">
+          <div class="mode-select">
+            <button class="mode-btn" :class="{active: mode==='copy'}" @click="mode='copy'">复制</button>
+            <button class="mode-btn" :class="{active: mode==='sync'}" @click="mode='sync'">增量同步</button>
+            <button class="mode-btn" :class="{active: mode==='mirror'}" @click="mode='mirror'">镜像同步</button>
+          </div>
+          <button class="btn btn-primary" @click="startTransfer" :disabled="!canStart || status.active">
+            {{ status.active ? '传输中...' : '&#9654; 开始传输' }}
+          </button>
+          <button v-if="status.active" class="btn btn-danger" @click="cancelTransfer">&#9724; 取消</button>
+        </div>
+        <div class="transfer-bar" style="margin-top:8px;font-size:12px;color:var(--text3);">
+          <span v-if="mode==='copy'">完整复制所有文件到目标目录</span>
+          <span v-else-if="mode==='sync'">只传输新增或修改过的文件</span>
+          <span v-else>让目标目录与源目录完全一致（会删除多余文件）</span>
+        </div>
+
+        <div v-if="status.active || status.progress > 0" class="progress-wrap">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" :style="{width: status.progress+'%'}"></div>
+            <div class="progress-bar-text">{{ status.progress }}%</div>
+          </div>
+          <div class="progress-info">
+            <span class="current-file" :title="status.current_file">{{ status.current_file || '...' }}</span>
+            <span v-if="status.speed">{{ status.speed }}</span>
+            <span v-if="status.transferred">| {{ status.transferred }}</span>
+            <span>| {{ status.done_files }}/{{ status.total_files }} 文件</span>
+          </div>
+          <div v-if="status.error" style="margin-top:8px;color:var(--danger);font-size:13px;">&#9888; {{ status.error }}</div>
+          <div v-if="!status.active && status.progress >= 100" style="margin-top:8px;color:var(--success);font-size:13px;">&#10004; 传输完成!</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TAB: History ============ -->
+    <div v-show="tab==='history'">
+      <div class="card">
+        <div class="card-title">
+          传输历史
+          <button class="btn-refresh" @click="loadHistory">&#8635; 刷新</button>
+        </div>
+        <div v-if="history.length" style="overflow-x:auto;">
+          <table class="history-table">
+            <thead><tr>
+              <th>时间</th><th>源路径</th><th>目标路径</th><th>模式</th><th>文件数</th><th>耗时</th><th>状态</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="(h,i) in history.slice().reverse()" :key="i">
+                <td>{{ h.timestamp }}</td>
+                <td :title="h.src" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ h.src }}</td>
+                <td :title="h.dst" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ h.dst }}</td>
+                <td><span class="mode-tag">{{ modeLabel(h.mode) }}</span></td>
+                <td>{{ h.done_files }}/{{ h.total_files }}</td>
+                <td>{{ h.elapsed }}s</td>
+                <td><span class="badge" :class="h.success?'badge-ok':'badge-fail'">{{ h.success ? '成功' : '失败' }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else style="color:var(--text3);font-size:13px;">暂无传输记录</div>
+      </div>
+    </div>
+
+    <!-- ============ Dest picker modal ============ -->
+    <div v-if="showDestPicker" class="modal-mask" @click.self="showDestPicker=false">
+      <div class="modal-box">
+        <div class="modal-header">
+          选择目标目录
+          <button class="modal-close" @click="showDestPicker=false">&#10005;</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom:8px;">
+            <select v-model="pickerQuick" @change="pickerQuickNav" style="font-size:13px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;width:100%;">
+              <option value="">-- 快速跳转到卷/共享 --</option>
+              <option v-for="s in nasShares" :key="s.path" :value="s.path">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="browser">
+            <div class="browser-path">
+              <span v-for="(seg, i) in pickerSegments" :key="i">
+                <span class="seg" @click="pickerNav(i)">{{ seg || '/' }}</span>
+                <span v-if="i < pickerSegments.length-1" class="sep">/</span>
+              </span>
+            </div>
+            <div class="browser-body">
+              <div v-if="pickerPath !== '/'" class="file-row" @click="pickerGoUp">
+                <span class="icon">&#11014;</span><span class="name">..</span>
+              </div>
+              <div v-for="item in pickerItems.filter(i => i.is_dir)" :key="item.name"
+                   class="file-row" @click="pickerEnter(item)">
+                <span class="icon">&#128193;</span>
+                <span class="name">{{ item.name }}</span>
+              </div>
+              <div v-if="!pickerItems.filter(i => i.is_dir).length" class="empty-dir">无子目录</div>
+            </div>
+          </div>
+          <div v-if="pickerPath && pickerPath !== '/'" class="selected-path dst" style="margin-top:8px;">
+            &#10003; 当前选择: {{ pickerPath }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-sm" style="background:#f5f7fa;border:1px solid var(--border);" @click="showDestPicker=false">取消</button>
+          <button class="btn btn-primary btn-sm" :disabled="!pickerPath || pickerPath === '/'" @click="confirmDest">确认选择</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
+
+createApp({
+  setup() {
+    const tab = ref('auto');
+    const api = (url, opts) => fetch(url, opts).then(r => r.json());
+
+    // --- Settings ---
+    const settings = ref({ dest_path: '', auto_transfer: false, source_dirs: ['DCIM'] });
+    const newSourceDir = ref('');
+    async function loadSettings() { settings.value = await api('/api/settings'); if (!settings.value.source_dirs) settings.value.source_dirs = ['DCIM']; }
+    async function saveSettings(s) { settings.value = await api('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(s) }); }
+    function toggleAuto(e) { saveSettings({ ...settings.value, auto_transfer: e.target.checked }); }
+    function addSourceDir() {
+      const d = newSourceDir.value.trim();
+      if (d && !settings.value.source_dirs.some(x => x.toUpperCase() === d.toUpperCase())) {
+        saveSettings({ ...settings.value, source_dirs: [...settings.value.source_dirs, d] });
+      }
+      newSourceDir.value = '';
+    }
+    function removeSourceDir(i) {
+      const dirs = [...settings.value.source_dirs];
+      dirs.splice(i, 1);
+      saveSettings({ ...settings.value, source_dirs: dirs });
+    }
+
+    // --- Dest picker modal ---
+    const showDestPicker = ref(false);
+    const pickerPath = ref('/');
+    const pickerItems = ref([]);
+    const pickerQuick = ref('');
+    const nasShares = ref([]);
+
+    async function loadNasShares() { nasShares.value = await api('/api/nas-shares'); }
+    async function pickerBrowse(path) {
+      pickerPath.value = path;
+      const data = await api('/api/browse?path=' + encodeURIComponent(path));
+      pickerItems.value = data.items || [];
+    }
+    function pickerEnter(item) { pickerBrowse(pickerPath.value.replace(/\/+$/, '') + '/' + item.name); }
+    function pickerGoUp() { pickerBrowse(pickerPath.value.replace(/\/[^/]+\/?$/, '') || '/'); }
+    function pickerQuickNav() { if (pickerQuick.value) pickerBrowse(pickerQuick.value); }
+    const pickerSegments = computed(() => {
+      if (!pickerPath.value || pickerPath.value === '/') return [''];
+      return ['', ...pickerPath.value.split('/').filter(Boolean)];
+    });
+    function pickerNav(i) { pickerBrowse('/' + pickerSegments.value.slice(1, i+1).join('/') || '/'); }
+    function confirmDest() {
+      saveSettings({ ...settings.value, dest_path: pickerPath.value });
+      showDestPicker.value = false;
+    }
+    watch(showDestPicker, (v) => {
+      if (v) {
+        const start = settings.value.dest_path || '/';
+        pickerBrowse(start);
+      }
+    });
+
+    // --- Auto events ---
+    const events = ref([]);
+    async function loadEvents() { events.value = await api('/api/auto-events'); }
+    function eventIcon(type) {
+      const map = { detected:'&#128268;', dcim_found:'&#128247;', auto_start:'&#9889;', transferring:'&#128260;',
+        done:'&#10004;', error:'&#10060;', removed:'&#9167;', need_config:'&#9888;', disabled:'&#128683;',
+        no_dcim:'&#128269;', config:'&#9881;', started:'&#9654;', skipped:'&#8987;' };
+      return map[type] || '&#8226;';
+    }
+
+    // --- Transfer status ---
+    const status = ref({ active:false, progress:0, speed:'', transferred:'', total_files:0, done_files:0, current_file:'', error:null, src:'', dst:'' });
+    let pollTimer = null;
+    function startPolling() {
+      stopPolling();
+      pollTimer = setInterval(async () => {
+        status.value = await api('/api/transfer/status');
+        if (!status.value.active) { stopPolling(); loadHistory(); loadEvents(); }
+      }, 500);
+    }
+    function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+    async function cancelTransfer() { await api('/api/transfer/cancel', { method:'POST' }); }
+
+    // --- Devices ---
+    const devices = ref([]);
+    const selectedDevice = ref('');
+    async function refreshDevices() { devices.value = await api('/api/usb-devices'); }
+    function selectDevice(d) { selectedDevice.value = d.mountpoint; selectedSrc.value = ''; browseSrc(d.mountpoint); }
+
+    // --- Source browser ---
+    const srcPath = ref('/');
+    const srcItems = ref([]);
+    const srcLoading = ref(false);
+    const selectedSrc = ref('');
+    async function browseSrc(path) { srcLoading.value=true; srcPath.value=path; const d=await api('/api/browse?path='+encodeURIComponent(path)); srcItems.value=d.items||[]; srcLoading.value=false; }
+    function srcClick(item) { const f=srcPath.value.replace(/\/+$/,'')+'/'+item.name; if(item.is_dir){selectedSrc.value=f;browseSrc(f);}else{selectedSrc.value=srcPath.value;} }
+    function srcGoUp() { browseSrc(srcPath.value.replace(/\/[^/]+\/?$/,'')||'/'); selectedSrc.value=''; }
+    const srcSegments = computed(() => { if(!srcPath.value||srcPath.value==='/') return ['']; return ['', ...srcPath.value.split('/').filter(Boolean)]; });
+    function navigateSrc(i) { browseSrc('/'+srcSegments.value.slice(1,i+1).join('/')||'/'); selectedSrc.value=''; }
+
+    // --- Dest browser ---
+    const dstPath = ref('/');
+    const dstItems = ref([]);
+    const dstLoading = ref(false);
+    const selectedDst = ref('');
+    const nasQuickPath = ref('');
+    async function browseDst(path) { dstLoading.value=true; dstPath.value=path; const d=await api('/api/browse?path='+encodeURIComponent(path)); dstItems.value=d.items||[]; dstLoading.value=false; }
+    function dstClick(item) { const f=dstPath.value.replace(/\/+$/,'')+'/'+item.name; if(item.is_dir){selectedDst.value=f;browseDst(f);} }
+    function dstGoUp() { browseDst(dstPath.value.replace(/\/[^/]+\/?$/,'')||'/'); selectedDst.value=''; }
+    function quickNavDst() { if(nasQuickPath.value){selectedDst.value=nasQuickPath.value;browseDst(nasQuickPath.value);} }
+    const dstSegments = computed(() => { if(!dstPath.value||dstPath.value==='/') return ['']; return ['', ...dstPath.value.split('/').filter(Boolean)]; });
+    function navigateDst(i) { browseDst('/'+dstSegments.value.slice(1,i+1).join('/')||'/'); selectedDst.value=''; }
+
+    // --- Manual transfer ---
+    const mode = ref('copy');
+    const canStart = computed(() => { const s=selectedSrc.value||srcPath.value; const d=selectedDst.value||dstPath.value; return s&&s!=='/'&&d&&d!=='/'; });
+    async function startTransfer() {
+      const src=selectedSrc.value||srcPath.value, dst=selectedDst.value||dstPath.value;
+      status.value={active:true,progress:0,speed:'',transferred:'',total_files:0,done_files:0,current_file:'Starting...',error:null,src,dst};
+      await api('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src,dst,mode:mode.value})});
+      startPolling();
+    }
+
+    // --- History ---
+    const history = ref([]);
+    async function loadHistory() { history.value = await api('/api/transfer/history'); }
+    function formatSize(bytes) { if(!bytes)return''; const u=['B','KB','MB','GB','TB']; let i=0,s=bytes; while(s>=1024&&i<u.length-1){s/=1024;i++;} return s.toFixed(i?1:0)+' '+u[i]; }
+    function modeLabel(m) { return {copy:'复制',sync:'增量同步',mirror:'镜像'}[m]||m; }
+
+    // --- Init & auto-poll ---
+    let eventTimer = null;
+    onMounted(() => {
+      loadSettings();
+      loadNasShares();
+      loadHistory();
+      loadEvents();
+      refreshDevices();
+      browseDst('/');
+      api('/api/transfer/status').then(s => { status.value=s; if(s.active) startPolling(); });
+      // Poll events every 3s to keep timeline updated
+      eventTimer = setInterval(() => { loadEvents(); if(!pollTimer) api('/api/transfer/status').then(s => { if(s.active){status.value=s;startPolling();} else {status.value=s;} }); }, 3000);
+    });
+    onUnmounted(() => { stopPolling(); if(eventTimer) clearInterval(eventTimer); });
+
+    return {
+      tab, settings, loadSettings, saveSettings, toggleAuto, newSourceDir, addSourceDir, removeSourceDir,
+      showDestPicker, pickerPath, pickerItems, pickerQuick, pickerSegments,
+      pickerBrowse, pickerEnter, pickerGoUp, pickerQuickNav, pickerNav, confirmDest,
+      nasShares, events, loadEvents, eventIcon,
+      status, cancelTransfer,
+      devices, selectedDevice, refreshDevices, selectDevice,
+      srcPath, srcItems, srcLoading, selectedSrc, srcSegments, browseSrc, srcClick, srcGoUp, navigateSrc,
+      dstPath, dstItems, dstLoading, selectedDst, dstSegments, nasQuickPath, browseDst, dstClick, dstGoUp, quickNavDst, navigateDst,
+      mode, canStart, startTransfer,
+      history, loadHistory, formatSize, modeLabel,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

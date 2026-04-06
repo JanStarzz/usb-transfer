@@ -1,0 +1,48 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/${TRIM_APPNAME}.log"
+PID_FILE="${TRIM_PKGVAR}/${TRIM_APPNAME}.pid"
+
+APP_DIR="${TRIM_APPDEST}"
+APP_DATA_DIR="${TRIM_PKGVAR}"
+
+SERVICE_COMMAND="$APP_DIR/bin/usb-transfer-server $APP_DATA_DIR"
+SVC_BACKGROUND=y
+SVC_WRITE_PID=y
+
+COMPOSE_FILE="${TRIM_APPDEST}/docker/docker-compose.yaml"
+PORT_SAVE="${TRIM_PKGVAR}/.port"
+
+apply_port() {
+    local port="$1"
+    [ -z "$port" ] && return
+    echo "${port}" > "$PORT_SAVE"
+    install_log "Port saved: ${port}"
+}
+
+service_postinst() {
+    mkdir -p "${TRIM_PKGVAR}/history" 2>/dev/null || true
+    # 将 ui/ 链接到 fnOS 期望的位置，使桌面图标和内嵌窗口生效
+    local APP_BASE="/var/apps/${TRIM_APPNAME}"
+    if [ -d "${TRIM_APPDEST}/ui" ] && [ ! -e "${APP_BASE}/ui" ]; then
+        ln -s "${TRIM_APPDEST}/ui" "${APP_BASE}/ui"
+        install_log "Symlinked ui: ${TRIM_APPDEST}/ui -> ${APP_BASE}/ui"
+    fi
+}
+
+service_postupgrade() {
+    if [ -f "$PORT_SAVE" ]; then
+        install_log "Restored port: $(cat "$PORT_SAVE")"
+    fi
+    # 升级后确保 ui 链接仍在
+    local APP_BASE="/var/apps/${TRIM_APPNAME}"
+    if [ -d "${TRIM_APPDEST}/ui" ] && [ ! -e "${APP_BASE}/ui" ]; then
+        ln -s "${TRIM_APPDEST}/ui" "${APP_BASE}/ui"
+    fi
+}
+
+service_postconfig() {
+    if [ -n "${wizard_port:-}" ]; then
+        apply_port "${wizard_port}"
+    fi
+}

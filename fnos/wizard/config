@@ -1,0 +1,17 @@
+[
+    {
+        "stepTitle": "USB Transfer",
+        "items": [
+            {
+                "type": "text",
+                "field": "wizard_port",
+                "label": "Web UI \u7aef\u53e3",
+                "initValue": "8580",
+                "rules": [
+                    { "required": true, "message": "\u8bf7\u8f93\u5165\u7aef\u53e3\u53f7" },
+                    { "pattern": "^[0-9]+$", "message": "\u7aef\u53e3\u5fc5\u987b\u662f\u6570\u5b57" }
+                ]
+            }
+        ]
+    }
+]

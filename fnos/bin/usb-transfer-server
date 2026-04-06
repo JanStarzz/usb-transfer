@@ -1,0 +1,11 @@
+#!/bin/sh
+APP_DIR="${TRIM_APPDEST}"
+APP_DATA_DIR=$1
+
+export HOME="$APP_DATA_DIR"
+
+cd "$APP_DIR" || exit 1
+exec python3 ./app/server.py \
+    --port "${TRIM_SERVICE_PORT:-8580}" \
+    --data-dir "$APP_DATA_DIR" \
+    --log-dir "$APP_DATA_DIR"

@@ -1,0 +1,15 @@
+{
+    ".url": {
+        "usb-transfer.Application":
+        {
+            "title": "USB Transfer",
+            "desc": "USB存储设备文件传输工具",
+            "icon": "images/{0}.png",
+            "type": "url",
+            "port": "8580",
+            "protocol": "http",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}
